@@ -14,16 +14,16 @@ int main() {
     	char command[100]; // Définissez la taille en fonction de vos besoins
     	fgets(command, sizeof(command), stdin);
 
-    	// Supprimez le saut de ligne à la fin de la commande
+    	// Supprimer le saut de ligne à la fin de la commande
     	command[strcspn(command, "\n")] = '\0';
 
-    	// Vérifiez si l'utilisateur a saisi 'exit'
+    	// Vérifier si l'utilisateur a saisi 'exit'
     	if (strcmp(command, "exit") == 0) {
         	printf("Au revoir !\n");
         	break; // Quittez la boucle
     	}
 
-    	// Ici, vous traiterez l'exécution de la commande (étape suivante)
+    	// Ici, nous traiterons l'exécution de la commande 
 	}
 
 	return 0;
