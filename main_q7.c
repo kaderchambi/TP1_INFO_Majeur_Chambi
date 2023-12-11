@@ -1,91 +1,66 @@
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <time.h>
 
-#define MAX_COMMAND_LENGTH 100
-
-int main() {
-	char input[MAX_COMMAND_LENGTH];
-	int status;
-
-	while (1) {
-    	// Affichage du prompt
-    	printf("enseash %% ");
-
-    	// Lecture de la commande de l'utilisateur
-    	fgets(input, sizeof(input), stdin);
-
-    	// Suppression du saut de ligne à la fin de la commande
-    	input[strcspn(input, "\n")] = '\0';
-
-    	// Vérification si l'utilisateur veut quitter
-    	if (strcmp(input, "exit") == 0) {
-        	printf("Bye bye...\n");
-        	break; // Quittez la boucle
-    	}
-
-    	// Fork pour créer un nouveau processus
-    	pid_t pid = fork();
-
-    	if (pid == -1) {
-        	perror("Erreur lors de la création du processus");
-        	exit(EXIT_FAILURE);
-    	} else if (pid == 0) {
-        	// Code exécuté par le processus fils
-
-        	// Recherche de la redirection de sortie '>'
-        	char *output_redirect = strchr(input, '>');
-        	if (output_redirect != NULL) {
-            	// Rediriger la sortie vers un fichier
-            	*output_redirect = '\0';  // Truncate la commande à '>'
-            	output_redirect++;    	// Pointe vers le nom du fichier
-
-            	// Fermer stdout et réaffecter à un fichier
-            	int file_descriptor = open(output_redirect, O_WRONLY | O_CREAT | O_TRUNC, 0666);
-            	if (file_descriptor == -1) {
-                	perror("Erreur lors de la redirection de sortie");
-                	exit(EXIT_FAILURE);
-            	}
-            	dup2(file_descriptor, STDOUT_FILENO);
-            	close(file_descriptor);
-        	}
-
-        	// Recherche de la redirection d'entrée '<'
-        	char *input_redirect = strchr(input, '<');
-        	if (input_redirect != NULL) {
-            	// Rediriger l'entrée à partir d'un fichier
-            	*input_redirect = '\0';  // Truncate la commande à '<'
-            	input_redirect++;    	// Pointe vers le nom du fichier
-
-            	// Fermer stdin et réaffecter à un fichier
-            	int file_descriptor = open(input_redirect, O_RDONLY);
-            	if (file_descriptor == -1) {
-                	perror("Erreur lors de la redirection d'entrée");
-                	exit(EXIT_FAILURE);
-            	}
-            	dup2(file_descriptor, STDIN_FILENO);
-            	close(file_descriptor);
-        	}
-
-        	// Exécuter la commande
-        	execlp("sh", "sh", "-c", input, (char *)NULL);
-
-        	// Si execlp échoue
-        	perror("Erreur lors de l'exécution de la commande");
-        	exit(EXIT_FAILURE);
-    	} else {
-        	// Code exécuté par le processus parent
-        	waitpid(pid, &status, 0);
-
-        	// Afficher le code de sortie
-        	printf("enseash [exit:%d] %%\n", WEXITSTATUS(status));
-    	}
+int main(int argc, char* argv[] ){
+	char command_string[MAX_SIZE];
+	char* command[MAX_N_ARGS];
+	int pid,status;
+	char* buf; //storage buffer
+	struct timespec t1,t2; //clock_gettime structure to store time
+	write(STDOUT_FILENO,START,strlen(START)); //writing first prompt
+	while(strcmp(command_string,EXIT_CODE)!=0){
+		read(STDIN_FILENO,command_string,MAX_SIZE);	    	//reading command
+		command_string[strlen(command_string)-1]='\0';  	//We need to remove the last character
+		if(clock_gettime(CLOCK_MONOTONIC,&t1) == -1){perror("clock_gettime");exit(EXIT_FAILURE);}
+		pid=fork();					
+		if(pid !=0){
+			wait(&status);
+			if(clock_gettime(CLOCK_MONOTONIC,&t2) == -1){perror("clock_gettime");exit(EXIT_FAILURE);}
+			if(WIFEXITED(status)){
+				//Writing prompt with exit information & time delay
+				sprintf(buf,"[exit:%d|%ldms]",WIFEXITED(status),(t2.tv_nsec-t1.tv_nsec)/1000000);
+				write(STDOUT_FILENO,PROMPT_BEGINNING,strlen(PROMPT_BEGINNING));
+				write(STDOUT_FILENO,buf,strlen(buf));
+				write(STDOUT_FILENO,PROMPT_END,strlen(PROMPT_END));
+			} else if (WIFSIGNALED(status)){
+				//Writing prompt with signal information & time delay
+				sprintf(buf,"[exit:%d|%ldms]",WTERMSIG(status),(t2.tv_nsec-t1.tv_nsec)/1000000);
+				write(STDOUT_FILENO,PROMPT_BEGINNING,strlen(PROMPT_BEGINNING));
+				write(STDOUT_FILENO,buf,strlen(buf));
+				write(STDOUT_FILENO,PROMPT_END,strlen(PROMPT_END));
+			}
+			if(strcmp(command_string,EXIT_CODE)==0){
+				write(STDOUT_FILENO,EXIT_MESSAGE,strlen(EXIT_MESSAGE)); //Exit message in case of exit
+				return EXIT_SUCCESS;
+			}
+		}
+		else if(pid==0){
+			parse_command(command_string,command);
+			execlp(command[0],command);	//executing command (no arguments)
+			return EXIT_SUCCESS;
+		}
 	}
-
-	return 0;
 }
 
+void parse_command(char* command_string,char** command){
+	char *delim=" ";
+	unsigned int count=0;
+	//command + options + NULL = MAX_N_ARGS+2 elements
+	char* tokens[MAX_N_ARGS+2];
+	char* token=strtok(command_string,delim);
+	tokens[0]=token;
+	count++;
+	while(token != NULL && count<MAX_N_ARGS+1){
+		token=strtok(NULL,delim);
+		tokens[count]=token;
+		count++;
+	}
+	tokens[count]=(char*) NULL;
+	execvp(tokens[0],tokens);
+	command=tokens;
+}
